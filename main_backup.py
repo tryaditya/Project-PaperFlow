@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from PIL import Image, ImageOps
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QInputDialog
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -217,6 +217,7 @@ class PaperFlow(QMainWindow):
             for image in images:
                 image.close()
 
+    
     def compress_pdf(self):
         input_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -255,6 +256,26 @@ class PaperFlow(QMainWindow):
             )
             return
 
+        presets = {
+            "Low — Better Quality but Larger File Size": (85, 0),
+            "Medium — Balanced": (60, 0),
+            "High — Smaller File Size but Lower Quality": (30, 0),
+        }
+
+        preset, accepted = QInputDialog.getItem(
+            self,
+            "Compression level",
+            "Choose a compression preset:",
+            list(presets.keys()),
+            1,
+            False,
+        )
+
+        if not accepted:
+            return
+
+        quality, dpi_target = presets[preset]
+
         try:
             import pymupdf
 
@@ -268,6 +289,17 @@ class PaperFlow(QMainWindow):
                     )
                     return
 
+                document.rewrite_images(
+                    dpi_threshold=0,
+                    dpi_target=0,
+                    quality=quality,
+                    lossy=True,
+                    lossless=True,
+                    color=True,
+                    gray=True,
+                    bitonal=True,
+                )
+
                 document.save(
                     output_path,
                     garbage=4,
@@ -280,10 +312,11 @@ class PaperFlow(QMainWindow):
             compressed_size = Path(output_path).stat().st_size
             saved = original_size - compressed_size
 
-            if original_size > 0:
-                percentage = saved / original_size * 100
-            else:
-                percentage = 0
+            percentage = (
+                saved / original_size * 100
+                if original_size > 0
+                else 0
+            )
 
             if saved > 0:
                 result = (
@@ -293,7 +326,7 @@ class PaperFlow(QMainWindow):
             elif saved < 0:
                 result = (
                     f"The output is {abs(saved) / 1024:.1f} KB larger. "
-                    "The original may already be optimized."
+                    "The original may already have been optimized."
                 )
             else:
                 result = "The file size did not change."
@@ -301,6 +334,7 @@ class PaperFlow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Compression complete",
+                f"Preset: {preset}\n"
                 f"Original: {original_size / 1024:.1f} KB\n"
                 f"Output: {compressed_size / 1024:.1f} KB\n\n"
                 f"{result}\n\nSaved to:\n{output_path}",
@@ -312,6 +346,7 @@ class PaperFlow(QMainWindow):
                 "Compression failed",
                 f"Could not process this PDF:\n{error}",
             )
+
 
 
 app = QApplication(sys.argv)
