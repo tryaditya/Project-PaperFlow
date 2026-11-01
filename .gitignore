@@ -17,4 +17,3 @@ htmlcov/
 .env.*
 Thumbs.db
 .DS_Store
-main_backup.py

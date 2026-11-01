@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from PIL import Image, ImageOps
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QInputDialog
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -15,7 +15,58 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QWidget,
+    QInputDialog,
 )
+
+
+SUPPORTED_IMAGE_FORMATS = {
+    ".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff"
+}
+
+
+class DropWidget(QWidget):
+    """Central widget that accepts image files dragged into the app."""
+
+    def __init__(self, paperflow):
+        super().__init__()
+        self.paperflow = paperflow
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+
+        has_supported_image = any(
+            url.isLocalFile()
+            and Path(url.toLocalFile()).suffix.lower() in SUPPORTED_IMAGE_FORMATS
+            for url in event.mimeData().urls()
+        )
+
+        if has_supported_image:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        files = [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.isLocalFile()
+            and Path(url.toLocalFile()).suffix.lower() in SUPPORTED_IMAGE_FORMATS
+        ]
+
+        if not files:
+            QMessageBox.warning(
+                self,
+                "No supported images",
+                "Please drop PNG, JPG, JPEG, BMP, WEBP or TIFF images.",
+            )
+            event.ignore()
+            return
+
+        event.acceptProposedAction()
+        self.paperflow.convert_photos(files)
 
 
 class PaperFlow(QMainWindow):
@@ -68,7 +119,7 @@ class PaperFlow(QMainWindow):
             }
         """)
 
-        central = QWidget()
+        central = DropWidget(self)
         central.setObjectName("central")
         self.setCentralWidget(central)
 
@@ -92,9 +143,11 @@ class PaperFlow(QMainWindow):
         pdf_card = self.create_card(
             "Photos to PDF",
             "Combine multiple photos into one PDF, "
-            "with each photo on its own page.",
+            "with each photo on its own page. You can also drag photos "
+            "anywhere into this window.",
             "Select Photos",
             self.select_photos,
+            drop_hint="↓  Drag & drop images here",
         )
 
         compress_card = self.create_card(
@@ -115,7 +168,7 @@ class PaperFlow(QMainWindow):
         footer.setStyleSheet("color: #8791A2;")
         main_layout.addWidget(footer)
 
-    def create_card(self, title, description, button_text, callback):
+    def create_card(self, title, description, button_text, callback, drop_hint=None):
         card = QFrame()
         card.setObjectName("toolCard")
 
@@ -134,6 +187,22 @@ class PaperFlow(QMainWindow):
         details = QLabel(description)
         details.setObjectName("toolDescription")
         details.setWordWrap(True)
+
+        if drop_hint:
+            hint = QLabel(drop_hint)
+            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hint.setStyleSheet("""
+                QLabel {
+                    background-color: #EEF2FF;
+                    color: #3157D5;
+                    border: 2px dashed #9AAEF5;
+                    border-radius: 10px;
+                    padding: 16px 10px;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+            """)
+            layout.addWidget(hint)
 
         button = QPushButton(button_text)
         button.clicked.connect(callback)
@@ -154,6 +223,10 @@ class PaperFlow(QMainWindow):
             "Images (*.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)",
         )
 
+        if files:
+            self.convert_photos(files)
+
+    def convert_photos(self, files):
         if not files:
             return
 
@@ -189,6 +262,14 @@ class PaperFlow(QMainWindow):
 
                     images.append(image.copy())
 
+            if not images:
+                QMessageBox.warning(
+                    self,
+                    "No images",
+                    "No valid images were selected.",
+                )
+                return
+
             first_image, *remaining_images = images
 
             first_image.save(
@@ -217,13 +298,9 @@ class PaperFlow(QMainWindow):
             for image in images:
                 image.close()
 
-    
     def compress_pdf(self):
         input_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choose a PDF to compress",
-            "",
-            "PDF files (*.pdf)",
+            self, "Choose a PDF to compress", "", "PDF files (*.pdf)"
         )
 
         if not input_path:
@@ -236,10 +313,7 @@ class PaperFlow(QMainWindow):
         )
 
         output_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save compressed PDF",
-            default_output,
-            "PDF files (*.pdf)",
+            self, "Save compressed PDF", default_output, "PDF files (*.pdf)"
         )
 
         if not output_path:
@@ -256,25 +330,8 @@ class PaperFlow(QMainWindow):
             )
             return
 
-        presets = {
-            "Low — Better Quality but Larger File Size": (85, 0),
-            "Medium — Balanced": (60, 0),
-            "High — Smaller File Size but Lower Quality": (30, 0),
-        }
-
-        preset, accepted = QInputDialog.getItem(
-            self,
-            "Compression level",
-            "Choose a compression preset:",
-            list(presets.keys()),
-            1,
-            False,
-        )
-
-        if not accepted:
-            return
-
-        quality, dpi_target = presets[preset]
+        quality = 30
+        preset = "High — Maximum Compression"
 
         try:
             import pymupdf
@@ -284,8 +341,7 @@ class PaperFlow(QMainWindow):
                     QMessageBox.warning(
                         self,
                         "Password-protected PDF",
-                        "This PDF requires a password and cannot be "
-                        "compressed by this version of PAPERFLOW.",
+                        "This PDF requires a password.",
                     )
                     return
 
@@ -308,28 +364,27 @@ class PaperFlow(QMainWindow):
                     deflate_fonts=True,
                 )
 
-            original_size = Path(input_path).stat().st_size
-            compressed_size = Path(output_path).stat().st_size
-            saved = original_size - compressed_size
+            original = Path(input_path)
+            output = Path(output_path)
 
-            percentage = (
-                saved / original_size * 100
-                if original_size > 0
-                else 0
-            )
+            original_size = original.stat().st_size
+            compressed_size = output.stat().st_size
 
-            if saved > 0:
+            if compressed_size >= original_size:
+                output.write_bytes(original.read_bytes())
+                compressed_size = original_size
+                result = (
+                    "No reduction possible with this preset. "
+                    "Original PDF preserved."
+                )
+            else:
+                saved = original_size - compressed_size
+                percentage = saved / original_size * 100
+
                 result = (
                     f"Reduced by {saved / 1024:.1f} KB "
                     f"({percentage:.1f}%)."
                 )
-            elif saved < 0:
-                result = (
-                    f"The output is {abs(saved) / 1024:.1f} KB larger. "
-                    "The original may already have been optimized."
-                )
-            else:
-                result = "The file size did not change."
 
             QMessageBox.information(
                 self,
@@ -346,7 +401,6 @@ class PaperFlow(QMainWindow):
                 "Compression failed",
                 f"Could not process this PDF:\n{error}",
             )
-
 
 
 app = QApplication(sys.argv)
