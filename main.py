@@ -3,7 +3,8 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPointF
+from PySide6.QtGui import QColor, QBrush, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QWidget,
     QInputDialog,
+    
 )
 
 
@@ -69,54 +71,158 @@ class DropWidget(QWidget):
         self.paperflow.convert_photos(files)
 
 
+class IllustrationWidget(QWidget):
+    """Small vector illustrations for the two tool cards."""
+
+    def __init__(self, kind, parent=None):
+        super().__init__(parent)
+        self.kind = kind
+        self.setMinimumHeight(145)
+        self.setMaximumHeight(165)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        blue = QColor("#3157D5")
+        light_blue = QColor("#E8EEFF")
+        pale = QColor("#F4F6FF")
+        dark = QColor("#20345F")
+        red = QColor("#F04F59")
+
+        cx = self.width() / 2
+        cy = self.height() / 2
+
+        if self.kind == "photos":
+            # Two overlapping photo cards.
+            painter.setPen(QPen(QColor("#C8D5FF"), 2))
+            painter.setBrush(QBrush(light_blue))
+            painter.save()
+            painter.translate(cx - 40, cy - 4)
+            painter.rotate(-10)
+            painter.drawRoundedRect(-43, -48, 78, 96, 10, 10)
+            painter.setBrush(QBrush(QColor("#9CC5FF")))
+            painter.drawRoundedRect(-32, -35, 56, 43, 6, 6)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor("#5D91E8")))
+            painter.drawEllipse(-16, -25, 13, 13)
+            painter.drawPolygon([
+                QPointF(-29, 5), QPointF(-9, -14), QPointF(2, -2),
+                QPointF(13, -12), QPointF(25, 5)
+            ])
+            painter.restore()
+
+            painter.setPen(QPen(blue, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(QPointF(cx - 2, cy), QPointF(cx + 35, cy))
+            painter.drawLine(QPointF(cx + 24, cy - 11), QPointF(cx + 36, cy))
+            painter.drawLine(QPointF(cx + 24, cy + 11), QPointF(cx + 36, cy))
+
+            # PDF page.
+            painter.setPen(QPen(QColor("#C8D5FF"), 2))
+            painter.setBrush(QBrush(Qt.GlobalColor.white))
+            painter.drawRoundedRect(int(cx + 45), int(cy - 51), 65, 102, 9, 9)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(red))
+            painter.drawRoundedRect(int(cx + 50), int(cy - 7), 55, 27, 6, 6)
+            painter.setPen(QPen(Qt.GlobalColor.white))
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+            painter.drawText(int(cx + 50), int(cy - 7), 55, 27, Qt.AlignmentFlag.AlignCenter, "PDF")
+
+        else:
+            # PDF document with compression arrows.
+            painter.setPen(QPen(QColor("#C8D5FF"), 2))
+            painter.setBrush(QBrush(light_blue))
+            painter.drawRoundedRect(int(cx - 45), int(cy - 58), 90, 116, 12, 12)
+            painter.setPen(QPen(QColor("#AFC2F8"), 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(QPointF(cx - 25, cy - 34), QPointF(cx + 20, cy - 34))
+            painter.drawLine(QPointF(cx - 25, cy - 18), QPointF(cx + 10, cy - 18))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(red))
+            painter.drawRoundedRect(int(cx - 34), int(cy - 2), 68, 29, 7, 7)
+            painter.setPen(QPen(Qt.GlobalColor.white))
+            painter.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+            painter.drawText(int(cx - 34), int(cy - 2), 68, 29, Qt.AlignmentFlag.AlignCenter, "PDF")
+
+            # Four inward arrows.
+            painter.setPen(QPen(blue, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            for x1, y1, x2, y2, ax, ay in [
+                (cx - 76, cy - 43, cx - 57, cy - 24, cx - 57, cy - 24),
+                (cx + 76, cy - 43, cx + 57, cy - 24, cx + 57, cy - 24),
+                (cx - 76, cy + 43, cx - 57, cy + 24, cx - 57, cy + 24),
+                (cx + 76, cy + 43, cx + 57, cy + 24, cx + 57, cy + 24),
+            ]:
+                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+                painter.drawLine(QPointF(x2, y2), QPointF(x2 + (7 if x1 < x2 else -7), y2))
+                painter.drawLine(QPointF(x2, y2), QPointF(x2, y2 + (7 if y1 < y2 else -7)))
+
+        painter.end()
+
+
 class PaperFlow(QMainWindow):
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("PAPERFLOW")
-        self.resize(1000, 650)
-        self.setMinimumSize(800, 550)
+        self.setWindowIcon(QIcon(str(Path(__file__).with_name("paperflow.ico"))))
+        self.resize(1050, 700)
+        self.setMinimumSize(850, 620)
 
         self.setStyleSheet("""
             QMainWindow, QWidget#central {
-                background-color: #F5F7FB;
-                color: #202938;
+                background-color: #F3F6FF;
+                color: #18233B;
                 font-family: Segoe UI;
             }
             QLabel#brand {
-                font-size: 28px;
-                font-weight: 700;
-                color: #3157D5;
+                font-size: 34px;
+                font-weight: 800;
+                color: #244BCB;
             }
             QLabel#subtitle {
-                font-size: 14px;
-                color: #687386;
+                font-size: 15px;
+                color: #657394;
+            }
+            QLabel#eyebrow {
+                color: #3157D5;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 1px;
             }
             QFrame#toolCard {
-                background-color: white;
-                border: 1px solid #E1E6EF;
-                border-radius: 14px;
+                background-color: #FFFFFF;
+                border: 1px solid #DDE5FA;
+                border-radius: 20px;
             }
             QLabel#toolTitle {
-                font-size: 21px;
-                font-weight: 600;
+                font-size: 22px;
+                font-weight: 700;
+                color: #18233B;
             }
             QLabel#toolDescription {
                 font-size: 13px;
-                color: #687386;
+                color: #657394;
+            }
+            QLabel#dropHint {
+                background-color: #F0F4FF;
+                color: #3157D5;
+                border: 2px dashed #9AAEF5;
+                border-radius: 12px;
+                padding: 13px;
+                font-size: 13px;
+                font-weight: 600;
             }
             QPushButton {
                 background-color: #3157D5;
                 color: white;
                 border: none;
-                border-radius: 8px;
-                padding: 12px 18px;
+                border-radius: 10px;
+                padding: 13px 18px;
                 font-size: 14px;
                 font-weight: 600;
             }
-            QPushButton:hover {
-                background-color: #2445B5;
-            }
+            QPushButton:hover { background-color: #2445B5; }
+            QPushButton:pressed { background-color: #1D3998; }
+            QPushButton:focus { border: 2px solid #91A9FF; }
         """)
 
         central = DropWidget(self)
@@ -124,63 +230,75 @@ class PaperFlow(QMainWindow):
         self.setCentralWidget(central)
 
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(40, 35, 40, 35)
-        main_layout.setSpacing(22)
+        main_layout.setContentsMargins(42, 32, 42, 28)
+        main_layout.setSpacing(10)
 
+        brand_row = QHBoxLayout()
+        brand_icon = QLabel()
+        brand_icon.setPixmap(QPixmap(str(Path(__file__).with_name("paperflow_icon.png"))).scaled(
+            66, 66, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+        ))
+        brand_row.addWidget(brand_icon)
+
+        brand_text = QVBoxLayout()
         brand = QLabel("PAPERFLOW")
         brand.setObjectName("brand")
-
         subtitle = QLabel("Your documents, simplified.")
         subtitle.setObjectName("subtitle")
-
-        main_layout.addWidget(brand)
-        main_layout.addWidget(subtitle)
-        main_layout.addSpacing(15)
+        brand_text.addWidget(brand)
+        brand_text.addWidget(subtitle)
+        brand_row.addLayout(brand_text)
+        brand_row.addStretch()
+        main_layout.addLayout(brand_row)
+        main_layout.addSpacing(18)
 
         cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(20)
+        cards_layout.setSpacing(22)
 
         pdf_card = self.create_card(
             "Photos to PDF",
-            "Combine multiple photos into one PDF, "
-            "with each photo on its own page. You can also drag photos "
-            "anywhere into this window.",
+            "Turn your photos into a clean, shareable PDF. Each image gets its own page.",
             "Select Photos",
             self.select_photos,
-            drop_hint="↓  Drag & drop images here",
+            "photos",
+            "↓   Drag & drop images here",
         )
-
         compress_card = self.create_card(
             "PDF Compressor",
-            "Reduce the size of large PDF files "
-            "while preserving the original file.",
+            "Make large PDF files smaller while keeping your original file safe.",
             "Choose PDF",
             self.compress_pdf,
+            "compress",
         )
 
-        cards_layout.addWidget(pdf_card)
-        cards_layout.addWidget(compress_card)
-        main_layout.addLayout(cards_layout)
+        cards_layout.addWidget(pdf_card, 1)
+        cards_layout.addWidget(compress_card, 1)
+        main_layout.addLayout(cards_layout, 1)
         main_layout.addStretch()
 
-        footer = QLabel("PAPERFLOW  •  Simple. Private. Offline.")
+        footer = QLabel("PAPERFLOW   •   Simple. Private. Offline.")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        footer.setStyleSheet("color: #8791A2;")
+        footer.setStyleSheet("color: #8794B2; font-size: 12px; padding-top: 8px;")
         main_layout.addWidget(footer)
 
-    def create_card(self, title, description, button_text, callback, drop_hint=None):
+    def create_card(self, title, description, button_text, callback, illustration, drop_hint=None):
         card = QFrame()
         card.setObjectName("toolCard")
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(24, 28, 24, 28)
-        layout.setSpacing(16)
+        layout.setContentsMargins(25, 24, 25, 24)
+        layout.setSpacing(12)
 
-        icon = QLabel("▣")
-        icon.setStyleSheet(
-            "font-size: 38px; color: #3157D5; border: none;"
-        )
+        eyebrow = QLabel("IMAGE TO DOCUMENT" if illustration == "photos" else "OPTIMIZE YOUR FILE")
+        eyebrow.setObjectName("eyebrow")
 
+        if drop_hint:
+            hint = QLabel(drop_hint)
+            hint.setObjectName("dropHint")
+            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(hint)
+
+        graphic = IllustrationWidget(illustration)
         heading = QLabel(title)
         heading.setObjectName("toolTitle")
 
@@ -188,26 +306,12 @@ class PaperFlow(QMainWindow):
         details.setObjectName("toolDescription")
         details.setWordWrap(True)
 
-        if drop_hint:
-            hint = QLabel(drop_hint)
-            hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            hint.setStyleSheet("""
-                QLabel {
-                    background-color: #EEF2FF;
-                    color: #3157D5;
-                    border: 2px dashed #9AAEF5;
-                    border-radius: 10px;
-                    padding: 16px 10px;
-                    font-size: 14px;
-                    font-weight: 600;
-                }
-            """)
-            layout.addWidget(hint)
-
         button = QPushButton(button_text)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(callback)
 
-        layout.addWidget(icon)
+        layout.addWidget(eyebrow)
+        layout.addWidget(graphic)
         layout.addWidget(heading)
         layout.addWidget(details)
         layout.addStretch()
